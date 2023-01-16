@@ -16,7 +16,11 @@ import pyautogui
 import wave
 import pyaudio
 from selenium.common.exceptions import StaleElementReferenceException
-from selenium.common.exceptions import TimeoutException 
+from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import ElementNotInteractableException 
+from scipy.io import wavfile
+import soundfile as sf
+import sys
 
 def is_connected():
     try:
@@ -43,14 +47,10 @@ record_seconds = 10
 
 options = webdriver.ChromeOptions()
 options.add_experimental_option("detach", True)
-browser = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-wait = WebDriverWait(browser, 10)
 
-if not is_connected():
-    print("Error! No interner connection")
-    raise SystemExit
 
-def open_youtube():
+
+def open_youtube(browser, wait):
     browser.get('http://www.youtube.com')
     browser.maximize_window()
 
@@ -80,7 +80,7 @@ def open_youtube():
     browser.execute_script("arguments[0].click()", acc_cookies_btn)
     print("Accepted cookies at {}".format(get_current_time()))
 
-def play_video():
+def play_video(browser, wait):
     # get all the videos by thumbnail and access a random one
     wait.until(EC.presence_of_all_elements_located((By.TAG_NAME, "yt-image")))
     videos = browser.find_elements(By.TAG_NAME, "yt-image")
@@ -95,6 +95,10 @@ def play_video():
             videos[idx].click()
         except TimeoutError:
             print("Error trying to click the video! - {}".format(get_current_time()))
+        except:
+            print("Error! Could not click the video! - {}".format(get_current_time()))
+            browser.quit()
+            raise SystemExit
 
         print("Accessed video {} at {}".format(browser.title, get_current_time()))
     else:
@@ -102,11 +106,9 @@ def play_video():
         browser.quit()
         raise SystemExit
 
-    # wait.until(EC.presence_of_all_elements_located((By.XPATH, "//button[@aria-label='{}']".format(accept_btn_text))))
     try:
         play_btn = browser.find_elements(By.XPATH, "//button[@class='ytp-play-button ytp-button']")
     except StaleElementReferenceException:
-        # play_btn = browser.find_elements(By.XPATH, "//button[@class='ytp-play-button ytp-button']")
         play_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-play-button ytp-button']")))
     except TimeoutException:
         play_btn = []
@@ -114,7 +116,6 @@ def play_video():
     try:
         shorts_play_btn = browser.find_elements(By.XPATH, "//button[@class='ytp-large-play-button ytp-button']")
     except StaleElementReferenceException:
-        # shorts_play_btn = browser.find_elements(By.XPATH, "//button[@class='ytp-large-play-button ytp-button']")
         shorts_play_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-large-play-button ytp-button']")))
     except TimeoutException:
         shorts_play_btn = []
@@ -131,17 +132,25 @@ def play_video():
     try:
         play_btn.click()
     except StaleElementReferenceException:
-        wait.until(EC.element_to_be_clickable(play_btn))
-        play_btn.click()
+        try:
+            wait.until(EC.element_to_be_clickable(play_btn))
+            play_btn.click()
+        except:
+            print("Error! Tried pressing play, but failed - {}".format(get_current_time()))
+            browser.quit()
+            raise SystemExit
     except TimeoutException:
         print("Error! Could not press play button - {}".format(get_current_time()))
+        browser.quit()
+        raise SystemExit
+    except ElementNotInteractableException: 
+        print("Error! The button is not interactable - {}".format(get_current_time()))
         browser.quit()
         raise SystemExit
 
     # browser.execute_script("arguments[0].click()", play_btn)
     print("Pressed play at {}".format(get_current_time()))
 
-    # class="ytp-ad-skip-button ytp-button"
     try:
         # Wait for the ad to appear
         skip_ad_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-ad-skip-button ytp-button']")))
@@ -159,8 +168,6 @@ def record_screen():
 
     start_time = time.time()
     duration = 10
-    end_time = start_time + duration
-    frame_count = 0
 
     CHUNK = 1024  # Number of samples per frame
     FORMAT = pyaudio.paInt16  # 16-bit int sampling
@@ -180,8 +187,6 @@ def record_screen():
     audio_frames = []   
 
 
-    # for i in range(int(record_seconds * fps)):
-    # while True:
     for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
         # make a screenshot
         img = pyautogui.screenshot()
@@ -193,25 +198,18 @@ def record_screen():
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         # write the frame
-        out.write(frame)
+        try:
+            out.write(frame)
+        except IOError:
+            print("Error while writting to the .avi file - {}".format(get_current_time))
+            raise SystemExit
 
         data = stream.read(CHUNK)
         audio_frames.append(data)
-        # show the frame
-        # cv2.imshow("screenshot", frame)
-
-        # time.sleep(1/fps)
 
         # if the user clicks q, it exits
         if cv2.waitKey(1) == ord("q"):
             break
-
-        # frame_count += 1
-        # if frame_count / fps >= record_seconds:
-        #     break
-        # current_time = time.time()
-        # if current_time >= end_time:
-        #     break
 
     # make sure everything is closed when exited
     cv2.destroyAllWindows()
@@ -221,19 +219,68 @@ def record_screen():
     p.terminate()
 
     print("Finished recording at {}".format(get_current_time()))
-    wf = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
-    wf.setnchannels(CHANNELS)
-    wf.setsampwidth(p.get_sample_size(FORMAT))
-    wf.setframerate(RATE)
-    wf.writeframes(b''.join(audio_frames))
-    wf.close()
 
+    # write to the .wav file
+    try:
+        wf = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(p.get_sample_size(FORMAT))
+        wf.setframerate(RATE)
+        wf.writeframes(b''.join(audio_frames))
+        wf.close()
+    except IOError:
+        print("Error while writting to the .wav file - {}".format(get_current_time))
+        raise SystemExit
+
+def rms_flat(a):  # from matplotlib.mlab
+    """
+    Return the root mean square of all the elements of *a*, flattened out.
+    """
+    return np.sqrt(np.mean(np.absolute(a)**2))
+
+
+def measure_wav_db_level(wavFile):
+    print("Started analyzing the .wav file - {}".format(get_current_time()))
+
+    """
+    Open a wave or raw audio file and perform the following tasks:
+    - compute the overall level in db (RMS of data)
+    """
+    try:
+        fs, x = wavfile.read(wavFile)
+        LOG_SCALE = 20*np.log10(32767)
+    except:
+        x, fs = sf.read(wavFile,
+                        channels=1, samplerate=44100,
+                        format='RAW', subtype='PCM_16')
+        LOG_SCALE = 0
+    t = (np.array(x)).astype(np.float64)
+    # x holds the int16 data, but it's hard to work on int16
+    # t holds the float64 conversion
+
+    # print(str(fs) + ' Hz')
+    # print(str(len(t) / fs) + ' s')
+    orig_SPL = 20 * np.log10(rms_flat(t)) - LOG_SCALE
+    # print('Sound level:   ' + str(orig_SPL) + ' dBFS')
+
+    f = open("out.txt", "w")
+    f.write('Sound level:   ' + str(orig_SPL) + ' dBFS')
+
+    return orig_SPL
 
 if __name__ == '__main__':
-    open_youtube()
-    play_video()
+    if is_connected():
+        browser = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        wait = WebDriverWait(browser, 10)
 
-    record_screen()
+        open_youtube(browser, wait)
+        play_video(browser, wait)
 
-    # browser.quit()
-    print("Closed browser at {}".format(get_current_time()))
+        record_screen()
+        measure_wav_db_level("audio_recording.wav")
+
+        browser.quit()
+        print("Closed browser at {}".format(get_current_time()))
+    else:
+        print("Error! No interner connection")
+        raise SystemExit
