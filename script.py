@@ -42,6 +42,8 @@ fourcc = cv2.VideoWriter_fourcc(*"XVID")
 fps = 12
 # # create the video write object
 out = cv2.VideoWriter("output.avi", fourcc, 40.0, (SCREEN_SIZE))
+log = open("out.log", "w")
+
 # # the time you want to record in seconds
 record_seconds = 10
 
@@ -58,7 +60,7 @@ def open_youtube(browser, wait):
 
     # current_time = now.strftime("%Y-%m-%d %H:%M:%S")
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print("Accessed {} at {}".format(browser.title, current_time))
+    log.write("Accessed {} at {}\n".format(browser.title, current_time))
 
     # get the accept cookies button and press it to continue
     accept_btn_text = "Accept the use of cookies and other data for the purposes described"
@@ -70,7 +72,7 @@ def open_youtube(browser, wait):
         return
 
     if len(acc_cookies_btn) == 0:
-        print("Error! Did not found the accept cookies button")
+        log.write("Error! Did not found the accept cookies button\n")
         browser.quit()
         raise SystemExit
     else:
@@ -78,7 +80,7 @@ def open_youtube(browser, wait):
 
 
     browser.execute_script("arguments[0].click()", acc_cookies_btn)
-    print("Accepted cookies at {}".format(get_current_time()))
+    log.write("Accepted cookies at {}\n".format(get_current_time()))
 
 def play_video(browser, wait):
     # get all the videos by thumbnail and access a random one
@@ -94,15 +96,15 @@ def play_video(browser, wait):
             wait.until(EC.element_to_be_clickable(videos[idx]))
             videos[idx].click()
         except TimeoutError:
-            print("Error trying to click the video! - {}".format(get_current_time()))
+            log.write("Error trying to click the video! - {}\n".format(get_current_time()))
         except:
-            print("Error! Could not click the video! - {}".format(get_current_time()))
+            log.write("Error! Could not click the video! - {}\n".format(get_current_time()))
             browser.quit()
             raise SystemExit
 
-        print("Accessed video {} at {}".format(browser.title, get_current_time()))
+        log.write("Accessed video {} at {}\n".format(browser.title, get_current_time()))
     else:
-        print("Error: got no videos")
+        log.write("Error: got no videos\n")
         browser.quit()
         raise SystemExit
 
@@ -121,7 +123,7 @@ def play_video(browser, wait):
         shorts_play_btn = []
 
     if len(play_btn) == 0 and len(shorts_play_btn) == 0:
-        print("Error: did not find the play button - {}".format(get_current_time()))
+        log.write("Error: did not find the play button - {}\n".format(get_current_time()))
         browser.quit()
         raise SystemExit
     elif len(play_btn) == 0:
@@ -136,20 +138,20 @@ def play_video(browser, wait):
             wait.until(EC.element_to_be_clickable(play_btn))
             play_btn.click()
         except:
-            print("Error! Tried pressing play, but failed - {}".format(get_current_time()))
+            log.write("Error! Tried pressing play, but failed - {}\n".format(get_current_time()))
             browser.quit()
             raise SystemExit
     except TimeoutException:
-        print("Error! Could not press play button - {}".format(get_current_time()))
+        log.write("Error! Could not press play button - {}\n".format(get_current_time()))
         browser.quit()
         raise SystemExit
     except ElementNotInteractableException: 
-        print("Error! The button is not interactable - {}".format(get_current_time()))
+        log.write("Error! The button is not interactable - {}\n".format(get_current_time()))
         browser.quit()
         raise SystemExit
 
     # browser.execute_script("arguments[0].click()", play_btn)
-    print("Pressed play at {}".format(get_current_time()))
+    log.write("Pressed play at {}\n".format(get_current_time()))
 
     try:
         # Wait for the ad to appear
@@ -157,14 +159,14 @@ def play_video(browser, wait):
 
         # Click on the skip ad button
         skip_ad_button.click()
-        print("Skipped ad at {}".format(get_current_time()))
+        log.write("Skipped ad at {}\n".format(get_current_time()))
     except:
-        print("No ad to skip.")
+        log.write("No ad to skip.\n")
 
 # browser.quit()
 
 def record_screen():
-    print("Started recording at {}".format(get_current_time()))
+    log.write("Started recording at {}\n".format(get_current_time()))
 
     start_time = time.time()
     duration = 10
@@ -201,7 +203,7 @@ def record_screen():
         try:
             out.write(frame)
         except IOError:
-            print("Error while writting to the .avi file - {}".format(get_current_time))
+            log.write("Error while writting to the .avi file - {}\n".format(get_current_time))
             raise SystemExit
 
         data = stream.read(CHUNK)
@@ -218,7 +220,7 @@ def record_screen():
     stream.close()
     p.terminate()
 
-    print("Finished recording at {}".format(get_current_time()))
+    log.write("Finished recording at {}\n".format(get_current_time()))
 
     # write to the .wav file
     try:
@@ -229,7 +231,7 @@ def record_screen():
         wf.writeframes(b''.join(audio_frames))
         wf.close()
     except IOError:
-        print("Error while writting to the .wav file - {}".format(get_current_time))
+        log.write("Error while writting to the .wav file - {}\n".format(get_current_time))
         raise SystemExit
 
 def rms_flat(a):  # from matplotlib.mlab
@@ -240,7 +242,7 @@ def rms_flat(a):  # from matplotlib.mlab
 
 
 def measure_wav_db_level(wavFile):
-    print("Started analyzing the .wav file - {}".format(get_current_time()))
+    log.write("Started analyzing the .wav file - {}\n".format(get_current_time()))
 
     """
     Open a wave or raw audio file and perform the following tasks:
@@ -258,10 +260,10 @@ def measure_wav_db_level(wavFile):
     # x holds the int16 data, but it's hard to work on int16
     # t holds the float64 conversion
 
-    # print(str(fs) + ' Hz')
-    # print(str(len(t) / fs) + ' s')
+    # log.write(str(fs) + ' Hz')
+    # log.write(str(len(t) / fs) + ' s')
     orig_SPL = 20 * np.log10(rms_flat(t)) - LOG_SCALE
-    # print('Sound level:   ' + str(orig_SPL) + ' dBFS')
+    # log.write('Sound level:   ' + str(orig_SPL) + ' dBFS')
 
     f = open("out.txt", "w")
     f.write('Sound level:   ' + str(orig_SPL) + ' dBFS')
@@ -280,7 +282,7 @@ if __name__ == '__main__':
         measure_wav_db_level("audio_recording.wav")
 
         browser.quit()
-        print("Closed browser at {}".format(get_current_time()))
+        log.write("Closed browser at {}\n".format(get_current_time()))
     else:
-        print("Error! No interner connection")
+        log.write("Error! No interner connection\n")
         raise SystemExit
